@@ -5,7 +5,6 @@ import lxml
 import os
 import time
 from lxml import html
-import pandas as pd
 '''
 	 the starting and ending dates are inclusive
 '''
@@ -15,30 +14,29 @@ class Archive_Scraper:
 		sd,sm,sy=input("Enter starting day month year ").split(" ")
 		ed,em,ey=input("Enter ending day month year ").split(" ")
 		self.keyword=input("Enter company data to scrape -")
+		option=int(input("Enter archive to scrape \n 1.reuters.com \n 2.Economictimes \n 3.thehindu "+
+							"\n 4.NDTV \n 5.BusinessLine\n"))
 		self.sm=int(sm)
 		self.sy=int(sy)
 		self.em=int(em)
 		self.ey=int(ey)
 		self.sd=int(sd)
 		self.ed=int(ed)
-		w = int(input("Enter website to scrape\n1)Econ Time\n2)Reuters\n3)The Hindu\n4)NDTV\n5)BusinessLine\n"))
-		if w == 1:
+		if(option==2):
 			print("Scraping from Economictimes")
 			self.econ_times()
-		if w == 2:
+		elif(option==1):
 			print("Scraping from reuters")
 			self.reuters()
-		if w == 3:
+		elif(option==3):
 			print("Scraping from thehindu")
 			self.thehindu()
-		if w == 4:
-			print("Scraping from NDTV")
+		elif(option==4):
+			print("NDTV Yolo")
 			self.ndtv()
-		if w == 5:
-			print("Scraping from BusinessLine")
+		elif(option==5):
+			print("BusinessLine")
 			self.businessLine()
-		else:
-			print("Invalid choice")
 	def generate_ym_pair(self,y,sm,em,need_zero):
 		year_mon=[]
 		for m in range(sm,em+1):
@@ -60,13 +58,12 @@ class Archive_Scraper:
 					if(y==self.sy):
 						year_month.extend(self.generate_ym_pair(y,self.sm,12,non_zero))
 					elif (y==self.ey):
-						year_month.extend(self.generate_ym_pair(y,1,self.em))
+						year_month.extend(self.generate_ym_pair(y,1,self.em,non_zero))
 					else:
-						year_month.extend(self.generate_ym_pair(y,1,12))
+						year_month.extend(self.generate_ym_pair(y,1,12,non_zero))
 		return year_month
 
 	def scrape(self,url):
-		#time.sleep(1)
 		r = requests.get(url)
 		print(url)
 		a,b = url.split('//')
@@ -104,32 +101,46 @@ class Archive_Scraper:
 				print("date",s)
 		
 		return s
+
 	def reuters(self):
 		url="http://www.reuters.com/resources/archive/us/{year}{month}{date}.html"
 		blacklist=['video','#top']
 		collection=[]
+		st_d,ed_d=self.sd,self.ed
 		year_month=self.year_m(True)
 		for year,month in year_month:
-			print("Year " + str(year)," Month " +str(month))
-			for d in range(self.sd,self.ed+1):
-				print ("date "+str(d))
+			print("Scraping for the Year " + str(year)," Month " +str(month))
+			if(int(month)!=self.sm or int(year)!=self.sy):
+				st_d=1
+			if(int(month)!=self.em and int(year)!=self.ey):
+				ed_d=31
+			else:
+				ed_d=self.ed
+			for d in range(st_d,ed_d+1):
 				if(d<10):
 					d="0"+str(d)
-				r=requests.get(url.format(year=year,month=month,date=d))
-				if(r.status_code==200):
-					b=BeautifulSoup(r.content,'html.parser')
-					links=b.select('div > div > div > div > div > div > a')
-					for link in links:
-						if(not ([i for i in blacklist if link.get('href').find(i)!=-1])):
-							if( link.get('href').find(self.keyword)!=-1):
-								index=link.get('href').rfind('/')
-								link="http://www.reuters.com/article"+link.get('href')[index:]
-								collection.append((str(d)+"-"+str(month)+"-"+str(year),link))
-						#else:
-						#	print('blacklisted '+link.get('href'))
-				else:
-					print("Skipped "+r.content)
-		
+				try:
+					r=requests.get(url.format(year=year,month=month,date=d))
+					print(r.url)
+					if(r.status_code==200):
+						b=BeautifulSoup(r.content,'html.parser')
+						links=b.select('div > div > div > div > div > div > a')
+						print(len(links))
+						for link in links:
+							if(not ([i for i in blacklist if link.get('href').find(i)!=-1])):
+								if(self.search_key(link.get('href').lower(),self.keyword)):
+									index=link.get('href').rfind('/')
+									link="http://www.reuters.com/article"+link.get('href')[index:]
+									print(link)
+									date_object=datetime.date(int(year),int(month),int(d))
+									date_,month_,year_=date_object.strftime("%d-%b-%Y").split('-')
+									collection.append(date_+"-"+month_+"-"+year_+"::"+link)
+							#else:
+							#	print('blacklisted '+link.get('href'))
+					else:
+						print("Skipped "+str(r.content))
+				except Exception as e:
+					print(e)
 		
 		print("Collected "+str(len(collection))+" urls for "+self.keyword)
 		self.writeToFile(collection,"reutersArchive",self.keyword,self.sd,self.sm,self.sy)
@@ -147,14 +158,18 @@ class Archive_Scraper:
 			final_date=date_diff+start_date
 			print (final_date),
 			visit_url=base_url.format(year=final_date.year,month=final_date.month,start_t=days+day)
-			page=requests.get(visit_url)
-			print(visit_url)
-			xtree=html.fromstring(page.content)
-			links=xtree.xpath("*//section[@id='pageContent']//li/a/@href")
-			for link in links:
-				if(link.find(self.keyword)!=-1):
-					link='http://economictimes.indiatimes.com'+link
-					collection.append((str(final_date.day)+'-'+str(final_date.month)+'-'+str(final_date.year),link))
+			try:
+				page=requests.get(visit_url)
+				print(visit_url)
+				xtree=html.fromstring(page.content)
+				links=xtree.xpath("*//section[@id='pageContent']//li/a/@href")
+				for link in links:
+					if(self.search_key(link.lower(),self.keyword)):
+						link='http://economictimes.indiatimes.com'+link
+						date_,month_,year_=final_date.strftime("%d-%b-%Y").split('-')
+						collection.append(date_+'-'+month_+'-'+year_+"::"+link)
+			except Exception as e:
+				print (e)
 		print("Collected "+str(len(collection))+" urls for "+self.keyword)
 		self.writeToFile(collection,"econtimesArchive",self.keyword,self.sd,self.sm,self.sy)
 
@@ -163,20 +178,26 @@ class Archive_Scraper:
 		year_month=self.year_m(True)
 		start_date=datetime.date(self.sy,self.sm,self.sd)
 		count_days=(datetime.date(self.ey,self.em,self.ed)-start_date).days+1
+		collection=[]
 		for d in range(count_days):
 			date_diff=datetime.timedelta(d)
 			final_date=date_diff+start_date
 			print (final_date),
 			visit_url=base_url.format(year=final_date.year,month=final_date.month,day=final_date.day)
 			# this webpage loads very slow and becomes unresponsive sometimes hence a timeout of None
-			page=requests.get(visit_url,timeout=None)
-			print(visit_url)
-			xtree=html.fromstring(page.content)
-			collection=[]
-			links=xtree.xpath("*//ul[@class='archive-list']//a/@href")
-			for link in links:
-				if(link.find(self.keyword)!=-1):
-					collection.append((str(final_date.day)+'-'+str(final_date.month)+'-'+str(final_date.year),link))
+			try:
+				page=requests.get(visit_url,timeout=None)
+				print(visit_url)
+				xtree=html.fromstring(page.content)
+				links=xtree.xpath("*//ul[@class='archive-list']//a/@href")
+				print (len(links))
+				for link in links:
+					if(self.search_key(link.lower(),self.keyword)):
+						print(link)
+						date_,month_,year_=final_date.strftime("%d-%b-%Y").split('-')
+						collection.append(date_+'-'+month_+'-'+year_+"::"+link)
+			except Exception as e:
+				print(e)
 		print("Collected "+str(len(collection))+" urls for "+self.keyword)
 		self.writeToFile(collection,"thehinduArchive",self.keyword,self.sd,self.sm,self.sy)
 
@@ -185,11 +206,12 @@ class Archive_Scraper:
 		year_month=self.year_m(True)
 		start_date=datetime.date(self.sy,self.sm,self.sd)
 		end_date = datetime.date(self.ey,self.em,self.ed)
-		collectionitc=[]
-		collectionsun = []
-		collectiontcs = []
+		
 
 		for d in range(start_date.year-int(self.ey) +1):
+			collectionitc=[]
+			collectionsun = []
+			collectiontcs = []
 			print("Scraping for the year",start_date.year-d)
 			try:
 				for x in range(start_date.month,end_date.month+1):
@@ -230,15 +252,16 @@ class Archive_Scraper:
 		print(start_date)
 		print(end_date.year)
 		
-		collectionitc=[]
-		collectionsun = []
-		collectiontcs = []
-		collectionon=[]
-		collectionsbi = []
-		collectionhd = []
-		collectionmar = []
+	
 		for i in range(start_date.year-int(self.ey)+1):
 			
+			collectionitc=[]
+			collectionsun = []
+			collectiontcs = []
+			collectionon=[]
+			collectionsbi = []
+			collectionhd = []
+			collectionmar = []
 			start_date=datetime.date(self.sy-i,self.sm,self.sd)
 			end_date = datetime.date(self.sy-i,self.em,self.ed)
 			daterange = pd.date_range(start_date, end_date)
@@ -288,8 +311,6 @@ class Archive_Scraper:
 			self.writeToFile(collectionsbi,"businessLineArchive",'sbi',self.sd,self.sm,self.sy)
 			self.writeToFile(collectionon,"businessLineArchive",'ongc',self.sd,self.sm,self.sy)
 			self.writeToFile(collectionhd,"businessLineArchive",'hdfc',self.sd,self.sm,self.sy)
-				
-			
 
 	def writeToFile(self,links,webp,company,date,month,year):
 		BASE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -302,5 +323,21 @@ class Archive_Scraper:
 		for i in links:
 			f.write(str(i)+"\n")
 		f.close()
-
+	def search_key(self,input_string,word):
+		index=input_string.find(word)
+		if(index!=-1):
+			if(index!=0):
+				low=ord(input_string[index-1])
+			else:
+				low=95
+			if(index+len(word)!=len(input_string)):
+				high=ord(input_string[index+len(word)])
+			else:
+				high=95
+			if( (low<97 or low>122) and ( high<97 or high>122) ):
+				return True
+			else:
+				return self.search_key(input_string[index+len(word):],word)
+		else:
+			return False
 start=Archive_Scraper()

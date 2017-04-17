@@ -53,9 +53,9 @@ previous=next_page
 try:
 	while next_page is not None or previous is not None:
 		print(i)
-		#if i >= 1:#no of pages to browse
-		#	break
-		time.sleep(random.randrange(20,25))  #no need for pages = 1
+		if i >= 1:#no of pages to browse
+			break
+		#time.sleep(random.randrange(5,10))  #no need for pages = 1
 		list_links=[]
 		dat = []
 		list_links=[]
